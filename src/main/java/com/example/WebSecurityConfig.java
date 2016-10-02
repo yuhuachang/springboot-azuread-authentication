@@ -1,24 +1,11 @@
 package com.example;
 
-import java.io.IOException;
-
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.authentication.logout.LogoutHandler;
-import org.springframework.security.web.authentication.preauth.AbstractPreAuthenticatedProcessingFilter;
 import org.springframework.security.web.csrf.CsrfFilter;
-import org.springframework.security.web.csrf.CsrfToken;
-import org.springframework.web.filter.OncePerRequestFilter;
 
 @EnableWebSecurity
 public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
@@ -40,15 +27,10 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 //            }
 //        }, CsrfFilter.class);
         
-
-        
-        //http.addFilterAfter(new BasicFilter(), AbstractPreAuthenticatedProcessingFilter.class);
-        
-        http.addFilterBefore(new FirstFilter(), CsrfFilter.class);
-        http.addFilterAfter(new BasicFilter(), CsrfFilter.class);
+        // Add AzureAD filter before and after CsrfFilter
+        http.addFilterBefore(new AzureADResponseFilter(), CsrfFilter.class);
+        http.addFilterAfter(new AzureADAuthenticationFilter(), CsrfFilter.class);
         
         http.authorizeRequests().anyRequest().authenticated();
-        
-//        http.csrf().disable();
     }
 }
