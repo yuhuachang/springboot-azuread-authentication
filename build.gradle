@@ -29,5 +29,10 @@ repositories {
 dependencies {
 	compile('org.springframework.boot:spring-boot-starter-security')
 	compile('org.springframework.boot:spring-boot-starter-web')
+
+	compile('com.microsoft.azure:adal4j:1.1.1')
+    compile('com.nimbusds:oauth2-oidc-sdk:4.5')
+    compile('org.json:json:20090211')
+
 	testCompile('org.springframework.boot:spring-boot-starter-test')
 }
