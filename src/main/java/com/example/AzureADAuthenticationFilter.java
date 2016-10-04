@@ -37,6 +37,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -49,10 +50,17 @@ public class AzureADAuthenticationFilter extends OncePerRequestFilter {
 
     private static Logger log = LoggerFactory.getLogger(AzureADAuthenticationFilter.class);
 
-    public static final String clientId = "cf7e14a9-f6d4-45a4-8bdb-7b67efd55745";
-    public static final String clientSecret = "yy72A9TlHwU4PlqoDFUAg2lBpxgCD5ugTOFm4nIMp10=";
-    public static final String tenant = "57e289b5-527b-4356-b8cd-d990c1875a1b";
-    public static final String authority = "https://login.microsoftonline.com/";
+    @Value("${com.taiwankk.authority}")
+    private String authority = "https://login.microsoftonline.com/";
+
+    @Value("${com.taiwankk.tenant}")
+    private String tenant = "57e289b5-527b-4356-b8cd-d990c1875a1b";
+
+    @Value("${com.taiwankk.clientId}")
+    private String clientId = "cf7e14a9-f6d4-45a4-8bdb-7b67efd55745";
+    
+    @Value("${com.taiwankk.clientSecret}")
+    private String clientSecret = "yy72A9TlHwU4PlqoDFUAg2lBpxgCD5ugTOFm4nIMp10=";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -109,7 +117,8 @@ public class AzureADAuthenticationFilter extends OncePerRequestFilter {
                         }
                     }
                 }
-                createSessionPrincipal(request, result);
+                
+                AuthHelper.setAuthSessionObject(request, result);
                 
                 // handle logout
                 log.info("URI: " + request.getRequestURI());
@@ -121,12 +130,12 @@ public class AzureADAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.clearContext();
 
                     // clear Azure principal
-                    request.getSession().setAttribute(AuthHelper.PRINCIPAL_SESSION_NAME, null);
+                    AuthHelper.remoteAuthSessionObject(request);
                     
                     // go to AzureAD and logout.
                     response.setStatus(302);
                     //String logoutPage = "https://login.windows.net/" + BasicFilter.tenant + "/oauth2/logout?post_logout_redirect_uri=https://login.windows.net/";
-                    String logoutPage = "https://login.windows.net/" + AzureADAuthenticationFilter.tenant + "/oauth2/logout";
+                    String logoutPage = "https://login.windows.net/" + tenant + "/oauth2/logout";
                     log.info("302 redirect to " + logoutPage);
                     
                     response.sendRedirect(logoutPage);
@@ -186,13 +195,6 @@ public class AzureADAuthenticationFilter extends OncePerRequestFilter {
         }
         return result;
 
-    }
-
-    private void createSessionPrincipal(HttpServletRequest httpRequest, AuthenticationResult result) throws Exception {
-        
-        log.info("create session principal: " + result.getUserInfo().getDisplayableId());
-        
-        httpRequest.getSession().setAttribute(AuthHelper.PRINCIPAL_SESSION_NAME, result);
     }
 
     private String getRedirectUrl(String currentUri) throws UnsupportedEncodingException {

@@ -37,6 +37,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
@@ -55,10 +56,17 @@ public class AzureADResponseFilter extends OncePerRequestFilter {
 
     private static Logger log = LoggerFactory.getLogger(AzureADResponseFilter.class);
 
-    public static final String clientId = "cf7e14a9-f6d4-45a4-8bdb-7b67efd55745";
-    public static final String clientSecret = "yy72A9TlHwU4PlqoDFUAg2lBpxgCD5ugTOFm4nIMp10=";
-    public static final String tenant = "57e289b5-527b-4356-b8cd-d990c1875a1b";
-    public static final String authority = "https://login.microsoftonline.com/";
+    @Value("${com.taiwankk.authority}")
+    private String authority = "https://login.microsoftonline.com/";
+
+    @Value("${com.taiwankk.tenant}")
+    private String tenant = "57e289b5-527b-4356-b8cd-d990c1875a1b";
+
+    @Value("${com.taiwankk.clientId}")
+    private String clientId = "cf7e14a9-f6d4-45a4-8bdb-7b67efd55745";
+    
+    @Value("${com.taiwankk.clientSecret}")
+    private String clientSecret = "yy72A9TlHwU4PlqoDFUAg2lBpxgCD5ugTOFm4nIMp10=";
 
     private String csrfToken;
     
@@ -123,7 +131,7 @@ public class AzureADResponseFilter extends OncePerRequestFilter {
                     log.info("SecurityContextHolder.getContext().getAuthentication() = " + SecurityContextHolder.getContext().getAuthentication());
                     
                     // store authentication data to Azure AD API. (in session)
-                    createSessionPrincipal(request, result);
+                    AuthHelper.setAuthSessionObject(request, result);
                 } else {
                     log.info("AuthHelper.isAuthenticationSuccessful = false");
                     
@@ -182,13 +190,6 @@ public class AzureADResponseFilter extends OncePerRequestFilter {
             throw new ServiceUnavailableException("authentication result was null");
         }
         return result;
-    }
-
-    private void createSessionPrincipal(HttpServletRequest httpRequest, AuthenticationResult result) throws Exception {
-        
-        log.info("create session principal: " + result.getUserInfo().getDisplayableId());
-        
-        httpRequest.getSession().setAttribute(AuthHelper.PRINCIPAL_SESSION_NAME, result);
     }
 
 }

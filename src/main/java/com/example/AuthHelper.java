@@ -27,6 +27,12 @@ import com.nimbusds.openid.connect.sdk.AuthenticationSuccessResponse;
 public final class AuthHelper {
 
     public static final String PRINCIPAL_SESSION_NAME = "principal";
+    
+    public static final String ERROR = "error";
+//    public static final String ERROR_DESCRIPTION = "error_description";
+//    public static final String ERROR_URI = "error_uri";
+    public static final String ID_TOKEN = "id_token";
+    public static final String CODE = "code";
 
     public static boolean isAuthenticated(HttpServletRequest request) {
         return request.getSession().getAttribute(PRINCIPAL_SESSION_NAME) != null;
@@ -36,14 +42,23 @@ public final class AuthHelper {
         return (AuthenticationResult) request.getSession().getAttribute(PRINCIPAL_SESSION_NAME);
     }
 
-    public static boolean containsAuthenticationData(HttpServletRequest httpRequest) {
-        return httpRequest.getMethod().equalsIgnoreCase("POST")
-                && (httpRequest.getParameterMap().containsKey(AuthParameterNames.ERROR)
-                        || httpRequest.getParameterMap().containsKey(AuthParameterNames.ID_TOKEN)
-                        || httpRequest.getParameterMap().containsKey(AuthParameterNames.CODE));
+    public static void setAuthSessionObject(HttpServletRequest request, AuthenticationResult result) {
+        request.getSession().setAttribute(AuthHelper.PRINCIPAL_SESSION_NAME, result);
+    }
+    
+    public static void remoteAuthSessionObject(HttpServletRequest request) {
+        request.getSession().removeAttribute(AuthHelper.PRINCIPAL_SESSION_NAME);
+    }
+
+    public static boolean containsAuthenticationData(HttpServletRequest request) {
+        return request.getMethod().equalsIgnoreCase("POST")
+                && (request.getParameterMap().containsKey(ERROR)
+                        || request.getParameterMap().containsKey(ID_TOKEN)
+                        || request.getParameterMap().containsKey(CODE));
     }
 
     public static boolean isAuthenticationSuccessful(AuthenticationResponse authResponse) {
         return authResponse instanceof AuthenticationSuccessResponse;
     }
+
 }
