@@ -27,10 +27,8 @@ import com.nimbusds.openid.connect.sdk.AuthenticationSuccessResponse;
 public final class AuthHelper {
 
     public static final String PRINCIPAL_SESSION_NAME = "principal";
-    
+
     public static final String ERROR = "error";
-//    public static final String ERROR_DESCRIPTION = "error_description";
-//    public static final String ERROR_URI = "error_uri";
     public static final String ID_TOKEN = "id_token";
     public static final String CODE = "code";
 
@@ -45,20 +43,25 @@ public final class AuthHelper {
     public static void setAuthSessionObject(HttpServletRequest request, AuthenticationResult result) {
         request.getSession().setAttribute(AuthHelper.PRINCIPAL_SESSION_NAME, result);
     }
-    
+
     public static void remoteAuthSessionObject(HttpServletRequest request) {
         request.getSession().removeAttribute(AuthHelper.PRINCIPAL_SESSION_NAME);
     }
 
     public static boolean containsAuthenticationData(HttpServletRequest request) {
-        return request.getMethod().equalsIgnoreCase("POST")
-                && (request.getParameterMap().containsKey(ERROR)
-                        || request.getParameterMap().containsKey(ID_TOKEN)
-                        || request.getParameterMap().containsKey(CODE));
+        return request.getMethod().equalsIgnoreCase("POST") && (request.getParameterMap().containsKey(ERROR)
+                || request.getParameterMap().containsKey(ID_TOKEN) || request.getParameterMap().containsKey(CODE));
     }
 
     public static boolean isAuthenticationSuccessful(AuthenticationResponse authResponse) {
         return authResponse instanceof AuthenticationSuccessResponse;
     }
 
+    public static String getCurrentUri(HttpServletRequest request) {
+        return request.getScheme() + "://" + request.getServerName()
+                + ("http".equals(request.getScheme()) && request.getServerPort() == 80
+                        || "https".equals(request.getScheme()) && request.getServerPort() == 443 ? ""
+                                : ":" + request.getServerPort())
+                + request.getRequestURI();
+    }
 }

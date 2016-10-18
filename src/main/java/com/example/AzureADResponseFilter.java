@@ -41,6 +41,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
+import org.springframework.stereotype.Component;
+import org.springframework.util.Assert;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.microsoft.aad.adal4j.AuthenticationContext;
@@ -52,89 +54,103 @@ import com.nimbusds.openid.connect.sdk.AuthenticationResponse;
 import com.nimbusds.openid.connect.sdk.AuthenticationResponseParser;
 import com.nimbusds.openid.connect.sdk.AuthenticationSuccessResponse;
 
+@Component
 public class AzureADResponseFilter extends OncePerRequestFilter {
 
     private static Logger log = LoggerFactory.getLogger(AzureADResponseFilter.class);
 
-    @Value("${com.taiwankk.authority}")
-    private String authority = "https://login.microsoftonline.com/";
+    @Value("${com.example.authority}")
+    private String authority;
 
-    @Value("${com.taiwankk.tenant}")
-    private String tenant = "57e289b5-527b-4356-b8cd-d990c1875a1b";
+    @Value("${com.example.tenant}")
+    private String tenant;
 
-    @Value("${com.taiwankk.clientId}")
-    private String clientId = "cf7e14a9-f6d4-45a4-8bdb-7b67efd55745";
+    @Value("${com.example.clientId}")
+    private String clientId;
     
-    @Value("${com.taiwankk.clientSecret}")
-    private String clientSecret = "yy72A9TlHwU4PlqoDFUAg2lBpxgCD5ugTOFm4nIMp10=";
+    @Value("${com.example.clientSecret}")
+    private String clientSecret;
+
+    @Value("${com.example.error}")
+    private String error;
 
     private String csrfToken;
     
     @Override
+    public void afterPropertiesSet() throws ServletException {
+        super.afterPropertiesSet();
+        Assert.notNull(authority);
+        Assert.notNull(tenant);
+        Assert.notNull(clientId);
+        Assert.notNull(clientSecret);
+        Assert.notNull(error);
+    }
+    
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-
         try {
 
-            String currentUri = request.getScheme() + "://" + request.getServerName()
-                    + ("http".equals(request.getScheme()) && request.getServerPort() == 80
-                            || "https".equals(request.getScheme()) && request.getServerPort() == 443 ? ""
-                                    : ":" + request.getServerPort())
-                    + request.getRequestURI();
-
-            String fullUrl = currentUri + (request.getQueryString() != null ? "?" + request.getQueryString() : "");
-
-            log.info("URL: " + fullUrl);
+            String currentUri = AuthHelper.getCurrentUri(request);
 
             csrfToken = null;
 
             // check if user has a session
             if (!AuthHelper.isAuthenticated(request) && AuthHelper.containsAuthenticationData(request)) {
 
-                // when not authenticated and the response contains authentication data,
-                // this request came from AzureAD login page.
-                
-                log.info("AuthHelper.isAuthenticated = false && AuthHelper.containsAuthenticationData = true");
+                // The current session does not have the authentication info and the request contains the authentication data.
+                // This request comes from AzureAD login page after login process is completed.
+
+                if (log.isTraceEnabled()) {
+                    log.trace("AuthHelper.isAuthenticated = false && AuthHelper.containsAuthenticationData = true");
+                }
                 
                 Map<String, String> params = new HashMap<String, String>();
                 for (String key : request.getParameterMap().keySet()) {
                     params.put(key, request.getParameterMap().get(key)[0]);
                 }
 
-                AuthenticationResponse authResponse = AuthenticationResponseParser.parse(new URI(fullUrl), params);
-                log.info("authResponse = " + authResponse);
+                String fullUrl = currentUri + (request.getQueryString() != null ? "?" + request.getQueryString() : "");
+                if (log.isTraceEnabled()) {
+                    log.trace("URL: " + fullUrl);
+                }
                 
-                if (AuthHelper.isAuthenticationSuccessful(authResponse)) {
+                AuthenticationResponse authResponse = AuthenticationResponseParser.parse(new URI(fullUrl), params);
+                if (log.isTraceEnabled()) {
+                    log.trace("authResponse = " + authResponse);
+                }
 
-                    // when authentication result from Azure AD is success,
-                    // retrieve the state (which is our csrf token) and store it to request header.
-                    // spring csrf filter reads this token in request header.
+                if (AuthHelper.isAuthenticationSuccessful(authResponse)) {
+                    if (log.isTraceEnabled()) {
+                        log.trace("AuthHelper.isAuthenticationSuccessful = true");
+                    }
                     
-                    log.info("AuthHelper.isAuthenticationSuccessful = true");
-                    
+                    // Retrieve authentication response.
                     AuthenticationSuccessResponse oidcResponse = (AuthenticationSuccessResponse) authResponse;
                     AuthenticationResult result = getAccessToken(oidcResponse.getAuthorizationCode(), currentUri);
                     
-                    // the state is our csrf token.
-                    log.info("state = " + oidcResponse.getState());
+                    // Retrieve CSRF token (the state is our csrf token.)
+                    if (log.isDebugEnabled()) {
+                        log.debug("oidcResponse.getState() = " + oidcResponse.getState());
+                    }
                     csrfToken = oidcResponse.getState().getValue();
-                    
-                    // we want to set csrf token to "request" header for Spring CsrfFilter.
-//                    response.setHeader("X-CSRF-TOKEN", csrfToken);
-//                    log.info("set csrf token to response header");
 
-                    // store authenticated principal to spring security context holder.
+                    // Store authenticated principal to spring security context holder.
                     Authentication anAuthentication = new PreAuthenticatedAuthenticationToken(result.getUserInfo(), null);
                     anAuthentication.setAuthenticated(true);
                     SecurityContextHolder.getContext().setAuthentication(anAuthentication);
                     
-                    log.info("SecurityContextHolder.getContext().getAuthentication() = " + SecurityContextHolder.getContext().getAuthentication());
-                    
-                    // store authentication data to Azure AD API. (in session)
+                    if (log.isDebugEnabled()) {
+                        log.debug("SecurityContextHolder.getContext().getAuthentication() = " + SecurityContextHolder.getContext().getAuthentication());
+                    }
+
+                    // Store authentication data to current session.
                     AuthHelper.setAuthSessionObject(request, result);
                 } else {
-                    log.info("AuthHelper.isAuthenticationSuccessful = false");
-                    
+                    if (log.isTraceEnabled()) {
+                        log.trace("AuthHelper.isAuthenticationSuccessful = false");
+                    }
+
                     AuthenticationErrorResponse oidcResponse = (AuthenticationErrorResponse) authResponse;
                     throw new Exception(String.format("Request for auth code failed: %s - %s",
                             oidcResponse.getErrorObject().getCode(),
@@ -144,25 +160,27 @@ public class AzureADResponseFilter extends OncePerRequestFilter {
         } catch (Throwable exc) {
             response.setStatus(500);
             request.setAttribute("error", exc.getMessage());
-            response.sendRedirect(((HttpServletRequest) request).getContextPath() + "/error.jsp");
+            response.sendRedirect(((HttpServletRequest) request).getContextPath() + error);
         }
 
         if (csrfToken != null) {
-            // if required, set csrf token to request header.
-            log.info("create a dummy request and put csrf token in its header {}", csrfToken);
+            // When csrf token is retrieved, create a dummy request and put this csrf token to the header.
+            if (log.isDebugEnabled()) {
+                log.debug("Create a dummy request and put csrf token in its header {}", csrfToken);
+            }
             filterChain.doFilter(new HttpServletRequestWrapper(request) {
-
                 @Override
                 public String getHeader(String name) {
                     if ("X-CSRF-TOKEN".equals(name)) {
-                        log.info("read csrf token from request header: {}", csrfToken);
+                        if (log.isDebugEnabled()) {
+                            log.debug("Read csrf token from request header: {}", csrfToken);
+                        }
                         return csrfToken;
                     }
                     return super.getHeader(name);
                 }
             }, response);
         } else {
-            // in regular cases, do nothing.
             filterChain.doFilter(request, response);
         }
     }

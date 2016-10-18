@@ -40,68 +40,93 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.stereotype.Component;
+import org.springframework.util.Assert;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.microsoft.aad.adal4j.AuthenticationContext;
 import com.microsoft.aad.adal4j.AuthenticationResult;
 import com.microsoft.aad.adal4j.ClientCredential;
 
+@Component
 public class AzureADAuthenticationFilter extends OncePerRequestFilter {
 
     private static Logger log = LoggerFactory.getLogger(AzureADAuthenticationFilter.class);
 
-    @Value("${com.taiwankk.authority}")
-    private String authority = "https://login.microsoftonline.com/";
+    @Value("${com.example.authority}")
+    private String authority;
 
-    @Value("${com.taiwankk.tenant}")
-    private String tenant = "57e289b5-527b-4356-b8cd-d990c1875a1b";
+    @Value("${com.example.tenant}")
+    private String tenant;
 
-    @Value("${com.taiwankk.clientId}")
-    private String clientId = "cf7e14a9-f6d4-45a4-8bdb-7b67efd55745";
+    @Value("${com.example.clientId}")
+    private String clientId;
     
-    @Value("${com.taiwankk.clientSecret}")
-    private String clientSecret = "yy72A9TlHwU4PlqoDFUAg2lBpxgCD5ugTOFm4nIMp10=";
+    @Value("${com.example.clientSecret}")
+    private String clientSecret;
+
+    @Value("${com.example.logout}")
+    private String logout;
+
+    @Value("${com.example.error}")
+    private String error;
 
     @Override
+    public void afterPropertiesSet() throws ServletException {
+        super.afterPropertiesSet();
+        Assert.notNull(authority);
+        Assert.notNull(tenant);
+        Assert.notNull(clientId);
+        Assert.notNull(clientSecret);
+        Assert.notNull(logout);
+        Assert.notNull(error);
+    }
+    
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-            throws ServletException, IOException {
+            throws ServletException, IOException { 
         try {
 
-            String currentUri = request.getScheme() + "://" + request.getServerName()
-                    + ("http".equals(request.getScheme()) && request.getServerPort() == 80
-                            || "https".equals(request.getScheme()) && request.getServerPort() == 443 ? ""
-                                    : ":" + request.getServerPort())
-                    + request.getRequestURI();
+            String currentUri = AuthHelper.getCurrentUri(request);
 
-            // check if user has a session
+            // Check if current session contains user authentication info.
             if (!AuthHelper.isAuthenticated(request)) {
 
-                log.info("AuthHelper.isAuthenticated = false");
+                if (log.isTraceEnabled()) {
+                    log.trace("AuthHelper.isAuthenticated = false");
+                }
 
                 if (AuthHelper.containsAuthenticationData(request)) {
-                    // handled previously already...
+                    // The request contains authentication data, which means this request is returned from AzureAD login page
+                    // after authentication process is completed.  The result should have been processed by AzureADResponseFilter.
                 } else {
-                    log.info("AuthHelper.containsAuthenticationData = false");
+                    if (log.isTraceEnabled()) {
+                        log.trace("AuthHelper.containsAuthenticationData = false");
+                    }
 
                     // when not authenticated and request does not contains authentication data (not come from Azure AD login process),
                     // redirect to Azure login page.
                     
                     // get csrf token
                     CsrfToken token = (CsrfToken) request.getAttribute("_csrf");
-                    log.info("current csrf token before going to AzureAD login {} {} = {}", token.getHeaderName(), token.getParameterName(), token.getToken());
-                    
+                    if (log.isDebugEnabled()) {
+                        log.debug("Current csrf token before going to AzureAD login {} {} = {}", token.getHeaderName(), token.getParameterName(), token.getToken());
+                    }
+
                     // add the csrf token to login request and go login...
                     response.setStatus(302);
-                    String redirectTo = getRedirectUrl(currentUri);
-                    redirectTo += "&state=" + token.getToken();
+                    String redirectTo = getRedirectUrl(currentUri) + "&state=" + token.getToken();
 
-                    log.info("302 redirect to " + redirectTo);
-                    
+                    if (log.isDebugEnabled()) {
+                        log.debug("302 redirect to " + redirectTo);
+                    }
                     response.sendRedirect(redirectTo);
                     return;
                 }
             } else {
-                log.info("AuthHelper.isAuthenticated = true");
+                if (log.isTraceEnabled()) {
+                    log.trace("AuthHelper.isAuthenticated = true");
+                }
 
                 // if authenticated, how to check for valid session?
                 AuthenticationResult result = AuthHelper.getAuthSessionObject(request);
@@ -120,32 +145,38 @@ public class AzureADAuthenticationFilter extends OncePerRequestFilter {
                 
                 AuthHelper.setAuthSessionObject(request, result);
                 
-                // handle logout
-                log.info("URI: " + request.getRequestURI());
-                if ("/logout".equals(request.getRequestURI())) {
-                    log.info("logout...");
+                // Handle logout
+                if (logout.equals(request.getRequestURI())) {
+                    if (log.isTraceEnabled()) {
+                        log.trace("Logout...");
+                    }
                     
-                    // clear spring security context so spring thinks this user is gone.
+                    // Clear spring security context so spring thinks this user is gone.
                     request.logout();
                     SecurityContextHolder.clearContext();
 
-                    // clear Azure principal
+                    // Clear Azure principal
                     AuthHelper.remoteAuthSessionObject(request);
                     
-                    // go to AzureAD and logout.
+                    // Go to AzureAD and logout.
                     response.setStatus(302);
-                    //String logoutPage = "https://login.windows.net/" + BasicFilter.tenant + "/oauth2/logout?post_logout_redirect_uri=https://login.windows.net/";
                     String logoutPage = "https://login.windows.net/" + tenant + "/oauth2/logout";
-                    log.info("302 redirect to " + logoutPage);
+                    if (log.isDebugEnabled()) {
+                        log.debug("302 redirect to " + logoutPage);
+                    }
                     
                     response.sendRedirect(logoutPage);
                     return;
+                } else {
+                    if (log.isTraceEnabled()) {
+                        log.trace("URI: " + request.getRequestURI() + " does not match " + logout + ".  It is not a logout request");
+                    }
                 }
             }
         } catch (Throwable exc) {
             response.setStatus(500);
             request.setAttribute("error", exc.getMessage());
-            response.sendRedirect(((HttpServletRequest) request).getContextPath() + "/error.jsp");
+            response.sendRedirect(((HttpServletRequest) request).getContextPath() + error);
         }
         
         filterChain.doFilter(request, response);
